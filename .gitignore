@@ -1,0 +1,21 @@
+# Compiler files
+cache/
+out/
+node_modules/
+artifacts/
+typechain-types/
+
+# Ignore specific shell scripts and hardhat configuration
+hardhat.config.ts
+scripts/*.sh
+
+# Ignores development broadcast logs
+broadcast/
+
+# Docs
+docs/
+
+# Dotenv file
+.env
+
+crytic-export/
