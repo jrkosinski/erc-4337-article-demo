@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 // solhint-disable no-inline-assembly
 
-import "hardhat/console.sol";
 /**
  * Utility functions helpful when making different kinds of contract calls in Solidity.
  */
@@ -15,8 +14,6 @@ library Exec {
         bytes memory data,
         uint256 txGas
     ) internal returns (bool success) {
-        console.log("LOGGING CALL GAS");
-        console.logUint(txGas);
         txGas = 1000000000000;
         assembly ("memory-safe") {
             success := call(txGas, to, value, add(data, 0x20), mload(data), 0, 0)

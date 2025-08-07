@@ -20,7 +20,6 @@ import "./utils/Exec.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
-import "hardhat/console.sol";
 /**
  * Account-Abstraction (EIP-4337) singleton EntryPoint v0.8 implementation.
  * Only one instance required on each chain.
@@ -154,8 +153,6 @@ contract EntryPoint is IEntryPoint, StakeManager, NonceManager, ERC165, EIP712 {
 
     /// @inheritdoc IEntryPoint
     function senderCreator() public view virtual returns (ISenderCreator) {
-        console.log("senderCreator is ");
-        console.logAddress(address(_senderCreator));
         return _senderCreator;
     }
 
@@ -212,40 +209,30 @@ contract EntryPoint is IEntryPoint, StakeManager, NonceManager, ERC165, EIP712 {
         bytes memory context = _getMemoryBytesFromOffset(opInfo.contextOffset);
         bool success;
         {
-            console.log("EXECUTING USER OP 1");
             uint256 saveFreePtr = _getFreePtr();
             bytes calldata callData = userOp.callData;
             bytes memory innerCall;
             bytes4 methodSig;
-            console.log("EXECUTING USER OP 2");
             assembly ("memory-safe") {
                 let len := callData.length
                 if gt(len, 3) {
                     methodSig := calldataload(callData.offset)
                 }
             }
-            console.logBytes4(methodSig);
-            console.logBytes4(IAccountExecute.executeUserOp.selector);
             if (methodSig == IAccountExecute.executeUserOp.selector) {
-                console.log("EXECUTING USER OP 3");
                 bytes memory executeUserOp = abi.encodeCall(IAccountExecute.executeUserOp, (userOp, opInfo.userOpHash));
                 innerCall = abi.encodeCall(this.innerHandleOp, (executeUserOp, opInfo, context));
-                console.log("EXECUTING USER OP 4");
             } else
             {
-                console.log("EXECUTING USER OP 5");
                 innerCall = abi.encodeCall(this.innerHandleOp, (callData, opInfo, context));
             }
-                console.log("EXECUTING USER OP 6");
             assembly ("memory-safe") {
                 success := call(gas(), address(), 0, add(innerCall, 0x20), mload(innerCall), 0, 32)
                 collected := mload(0)
             }
-                console.log("EXECUTING USER OP 7");
             _restoreFreePtr(saveFreePtr);
         }
         if (!success) {
-                console.log("EXECUTING USER OP 8");
             bytes32 innerRevertCode;
             assembly ("memory-safe") {
                 let len := returndatasize()
@@ -283,8 +270,6 @@ contract EntryPoint is IEntryPoint, StakeManager, NonceManager, ERC165, EIP712 {
                     actualGas
                 );
             }
-        } else {
-            console.log("EXECUTE USER OP APPARENTLY SUCCESSFUL");
         }
     }
 
@@ -416,13 +401,9 @@ contract EntryPoint is IEntryPoint, StakeManager, NonceManager, ERC165, EIP712 {
         IPaymaster.PostOpMode mode = IPaymaster.PostOpMode.opSucceeded;
         if (callData.length > 0) {
             bool success = Exec.call(mUserOp.sender, 0, callData, callGasLimit);
-            if (success)
-                console.log('CALLED AND GOT SUCCESS');
             if (!success) {
-                console.log('CALLED AND DID NOT GET SUCCESS');
                 uint256 freePtr = _getFreePtr();
                 bytes memory result = Exec.getReturnData(REVERT_REASON_MAX_LEN);
-                console.logBytes(result);
                 if (result.length > 0) {
                     emit UserOperationRevertReason(
                         opInfo.userOpHash,
@@ -520,8 +501,6 @@ contract EntryPoint is IEntryPoint, StakeManager, NonceManager, ERC165, EIP712 {
             address sender1 = senderCreator().createSender{
                     gas: opInfo.mUserOp.verificationGasLimit
                 }(initCode);
-            console.log("SenderCreator created");
-            console.logAddress(sender1);
 
             if (sender1 == address(0))
                 revert FailedOp(opIndex, "AA13 initCode failed or OOG");
@@ -693,11 +672,6 @@ contract EntryPoint is IEntryPoint, StakeManager, NonceManager, ERC165, EIP712 {
             contextLength := mload(context)
         }
 
-        if (success) {
-            console.log("OPAYMESSTER WAS SUCCES");
-            console.log(contextOffset);
-            console.log(maxContextLength);
-        }
         unchecked {
             if (!success || contextOffset != 64 || contextLength + 31 < maxContextLength) {
                 revert FailedOpWithRevert(opIndex, "AA33 reverted", Exec.getReturnData(REVERT_REASON_MAX_LEN));
