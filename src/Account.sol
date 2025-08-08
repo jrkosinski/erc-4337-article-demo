@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import "@account-abstraction/contracts/core/BaseAccount.sol";
+import "./EntryPoint/BaseAccount.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import "hardhat/console.sol";
 
 
 contract Account is BaseAccount {
@@ -28,6 +29,8 @@ contract Account is BaseAccount {
         return counter;
     }
 
+    receive() external payable {}
+
     /// implement your authentication logic here
     function _validateSignature(PackedUserOperation calldata userOp, bytes32 userOpHash) internal override virtual returns (uint256 validationData) {
 
@@ -41,13 +44,16 @@ contract Account is BaseAccount {
 
             // 3. Validate nonce (simplified example)
             //require(userOp.nonce == getNonce(), "Invalid nonce");
+
         }
 
+        console.log("SIGNATURE VALID");
         // Return validation data (e.g., VALIDATION_SUCCESS)
         return 0; // Or a specific value indicating success
     }
 
     function modifyState() external {
+        console.log("ACCOUNT: modifyState CALLED");
         counter = counter+1;
     }
 

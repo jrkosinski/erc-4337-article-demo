@@ -1,14 +1,15 @@
 import { expect } from 'chai';
 import hre, { ethers } from 'hardhat';
 import { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers';
-import { sign } from 'crypto';
 
 describe('AccountAbstraction', function () {
     let paymasterAccount: HardhatEthersSigner;
     let accountOwnerAccount: HardhatEthersSigner;
     let signer0: HardhatEthersSigner;
+    let signer1: HardhatEthersSigner;
     let entryPoint: any;
     let accountFactory: any;
+    let paymaster: any;
 
     async function deployAccountFactory(withAuth: boolean = false) {
         const AccountFactoryFactory =
@@ -19,12 +20,17 @@ describe('AccountAbstraction', function () {
         );
     }
 
-    async function fundGas(from: HardhatEthersSigner, to: string) {
+    async function fundGas(
+        from: HardhatEthersSigner,
+        to: string,
+        amount: string = '1'
+    ) {
         console.log('funding gas from', from.address, 'to', to);
-        const transaction = await from.sendTransaction({
+        const tx = await from.sendTransaction({
             to,
-            value: hre.ethers.parseEther('1'),
+            value: hre.ethers.parseEther(amount),
         });
+        await tx.wait();
     }
 
     //returns the address of the newly created account (address of Account contract)
@@ -50,7 +56,8 @@ describe('AccountAbstraction', function () {
         sender: string,
         useAuth: boolean = false,
         callData: any = '0x',
-        createAccount: boolean = false
+        createAccount: boolean = false,
+        paymaster: any = undefined
     ): Promise<{ receipt: any; sender: string }> {
         //get contract factories
         const AccountFactoryFactory =
@@ -84,7 +91,9 @@ describe('AccountAbstraction', function () {
             preVerificationGas: 200_000_000,
             gasFees:
                 '0x0000000000000000000000000002000000000000000000000000000000200000',
-            paymasterAndData: '0x',
+            paymasterAndData: paymaster
+                ? `${paymaster.target.padEnd(254, '0')}`
+                : '0x',
             signature: '0x',
         };
 
@@ -109,6 +118,23 @@ describe('AccountAbstraction', function () {
         return { sender, receipt };
     }
 
+    async function sendUserOpWithPaymaster(
+        signer: HardhatEthersSigner,
+        sender: string,
+        useAuth: boolean = false,
+        callData: any = '0x',
+        createAccount: boolean = false
+    ): Promise<{ receipt: any; sender: string }> {
+        return sendUserOp(
+            signer,
+            sender,
+            useAuth,
+            callData,
+            createAccount,
+            paymaster
+        );
+    }
+
     this.beforeEach(async () => {
         const [a1, a2, a3, a4, a5, a6, a7, a8, a9] =
             await hre.ethers.getSigners();
@@ -116,6 +142,7 @@ describe('AccountAbstraction', function () {
         paymasterAccount = a1;
         accountOwnerAccount = a2;
         signer0 = a3;
+        signer1 = a4;
 
         //deploy entry point
         const EntryPointFactory =
@@ -124,6 +151,17 @@ describe('AccountAbstraction', function () {
 
         //deploy account factory
         await deployAccountFactory(false);
+
+        //deploy paymaster
+        const PaymasterFactory =
+            await hre.ethers.getContractFactory('Paymaster');
+        paymaster = await PaymasterFactory.deploy(entryPoint.target);
+
+        //fund paymaster
+        await fundGas(signer1, paymaster.target, '210');
+        await paymaster.connect(signer1).deposit({
+            value: hre.ethers.parseEther('100'),
+        });
     });
 
     describe('Deployment', function () {
@@ -340,6 +378,7 @@ describe('AccountAbstraction', function () {
             const accountAddress = receipt.logs[1].args[1];
             expect(accountAddress).to.equal(sender);
 
+            //get the actual new smart account contract
             const account = await hre.ethers.getContractAt(
                 'Account',
                 accountAddress
@@ -374,6 +413,57 @@ describe('AccountAbstraction', function () {
 
             //call third time
             await sendUserOp(signer0, sender, true, callData);
+            expect(await account.getCounter()).to.equal(3);
+        });
+    });
+
+    describe('Paymaster', function () {
+        this.beforeEach(async () => {
+            //deploy account factory that requires auth
+            //await deployAccountFactory(true);
+        });
+
+        it('can create account and send user op in separate steps, no authentication', async function () {
+            const { sender, receipt } = await createNewAccount(signer0, false);
+
+            //TODO: find a better way to get the address
+            const accountAddress = receipt.logs[1].args[1];
+            expect(accountAddress).to.equal(sender);
+
+            const account = await hre.ethers.getContractAt(
+                'Account',
+                accountAddress
+            );
+
+            //verify the counter is zero
+            console.log('counter:', await account.getCounter());
+            expect(await account.getCounter()).to.equal(0);
+
+            //create call data for modifyState
+            const AccountFactory =
+                await hre.ethers.getContractFactory('Account');
+            const callData = AccountFactory.interface.encodeFunctionData(
+                'execute',
+                [
+                    sender,
+                    0,
+                    AccountFactory.interface.encodeFunctionData('modifyState'),
+                ]
+            );
+
+            //initially should be 0
+            expect(await account.getCounter()).to.equal(0);
+
+            //call first time
+            await sendUserOpWithPaymaster(signer0, sender, false, callData);
+            expect(await account.getCounter()).to.equal(1);
+
+            //call second time
+            await sendUserOpWithPaymaster(signer0, sender, false, callData);
+            expect(await account.getCounter()).to.equal(2);
+
+            //call third time
+            await sendUserOpWithPaymaster(signer0, sender, false, callData);
             expect(await account.getCounter()).to.equal(3);
         });
     });
