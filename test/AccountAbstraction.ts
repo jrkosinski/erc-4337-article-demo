@@ -38,9 +38,6 @@ describe('AccountAbstraction', function () {
             nonce: 1,
         });
 
-        //pre-fund gas
-        await fundGas(signer, sender);
-
         //sender userop
         return await sendUserOp(signer, sender, useAuth, callData, true);
     }
@@ -95,10 +92,6 @@ describe('AccountAbstraction', function () {
             );
         }
 
-        await entryPoint.depositTo(paymasterAccount.address, {
-            value: ethers.parseEther('10'),
-        });
-
         //send the userop
         const tx = await entryPoint.handleOps(
             [userOp],
@@ -143,145 +136,6 @@ describe('AccountAbstraction', function () {
     });
 
     describe('User Operations', function () {
-        it('can send user operation', async function () {
-            const sender = await hre.ethers.getCreateAddress({
-                from: accountFactory.target,
-                nonce: 1,
-            });
-
-            //get contract factories
-            const AccountFactoryFactory =
-                await hre.ethers.getContractFactory('AccountFactory');
-            const AccountFactory =
-                await hre.ethers.getContractFactory('Account');
-
-            //generate initCode for createAccount
-            const initCode =
-                accountFactory.target +
-                AccountFactoryFactory.interface
-                    .encodeFunctionData('createAccount', [signer0.address])
-                    .substring(2);
-
-            //get callData to call the function
-            //const callData =
-            //    AccountFactory.interface.encodeFunctionData('modifyState');
-            const callData = AccountFactory.interface.encodeFunctionData(
-                'execute',
-                [
-                    sender,
-                    0,
-                    AccountFactory.interface.encodeFunctionData('modifyState'),
-                ]
-            );
-
-            //deposit funds to the Entrypoint
-            await entryPoint.depositTo(sender, {
-                value: hre.ethers.parseEther('100'),
-            });
-
-            //get EP nonce
-            const nonce = await entryPoint.getNonce(sender, 0);
-
-            //fund gas
-            await fundGas(signer0, sender);
-
-            //create the user op
-            const userOp: any = {
-                sender,
-                nonce,
-                initCode,
-                callData,
-                callGasLimit: 200_000_000,
-                accountGasLimits:
-                    '0x0000000000000000000020000000000000000000000000000000000000200000',
-                preVerificationGas: 200_000_000,
-                gasFees:
-                    '0x0000000000000000000000000002000000000000000000000000000000200000',
-                paymasterAndData: '0x',
-                signature: '0x',
-            };
-
-            await entryPoint.depositTo(paymasterAccount.address, {
-                value: ethers.parseEther('10'),
-            });
-
-            //send the userop
-            const tx = await entryPoint.handleOps(
-                [userOp],
-                paymasterAccount.address
-            );
-            await tx.wait();
-
-            const account = await hre.ethers.getContractAt('Account', sender);
-
-            //await account.modifyState();
-            console.log('counter:', await account.getCounter());
-            expect(await account.getCounter()).to.equal(1);
-
-            const userOp2: any = {
-                sender,
-                nonce: await entryPoint.getNonce(sender, 0),
-                initCode: '0x',
-                callData,
-                callGasLimit: 500_000, // Reasonable for most operations
-                accountGasLimits:
-                    '0x' +
-                    (100_000).toString(16).padStart(64, '0') + // verificationGasLimit
-                    (500_000).toString(16).padStart(64, '0'), // callGasLimit (matches above)
-                preVerificationGas: 50_000, // Reasonable pre-verification
-                gasFees:
-                    '0x' +
-                    (2_000_000_000).toString(16).padStart(32, '0') + // maxPriorityFeePerGas (2 gwei)
-                    (20_000_000_000).toString(16).padStart(32, '0'), // maxFeePerGas (20 gwei)
-                paymasterAndData: '0x',
-                signature: '0x',
-            };
-
-            (
-                await entryPoint.depositTo(paymasterAccount.address, {
-                    value: ethers.parseEther('10'),
-                })
-            ).wait();
-            return;
-
-            const tx2 = await entryPoint.handleOps(
-                [userOp2],
-                paymasterAccount.address
-            );
-            const receipt2 = await tx2.wait();
-
-            console.log('counter:', await account.getCounter());
-            expect(await account.getCounter()).to.equal(2);
-
-            const userOp3: any = {
-                sender,
-                nonce: await entryPoint.getNonce(sender, 0),
-                initCode: '0x',
-                callData,
-                callGasLimit: 200_000_000,
-                accountGasLimits:
-                    '0x0000000000000100bebc20000000000000000000000000000000000000002000',
-                preVerificationGas: 200_000_000,
-                gasFees:
-                    '0x0000000000000100bebc2000000000000000000000000000000000000002000',
-                paymasterAndData: '0x',
-                signature: '0x',
-            };
-
-            console.log(userOp3);
-            (
-                await entryPoint.depositTo(paymasterAccount.address, {
-                    value: ethers.parseEther('10'),
-                })
-            ).wait();
-
-            const tx3 = await entryPoint.handleOps([userOp3], signer0.address);
-            const receipt3 = await tx3.wait();
-
-            console.log('counter:', await account.getCounter());
-            expect(await account.getCounter()).to.equal(3);
-        });
-
         it('can create account and send user op in separate steps', async function () {
             const { sender, receipt } = await createNewAccount(signer0);
 
