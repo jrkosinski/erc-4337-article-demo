@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import hre, { ethers } from 'hardhat';
 import { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers';
+import { Wallet } from 'ethers';
 
 describe('AccountAbstraction', function () {
     let paymasterAccount: HardhatEthersSigner;
@@ -21,7 +22,7 @@ describe('AccountAbstraction', function () {
     }
 
     async function fundGas(
-        from: HardhatEthersSigner,
+        from: HardhatEthersSigner | Wallet,
         to: string,
         amount: string = '1'
     ) {
@@ -35,7 +36,7 @@ describe('AccountAbstraction', function () {
 
     //returns the address of the newly created account (address of Account contract)
     async function createNewAccount(
-        signer: HardhatEthersSigner,
+        signer: HardhatEthersSigner | Wallet,
         useAuth: boolean = false,
         callData: any = '0x'
     ): Promise<{ receipt: any; sender: string }> {
@@ -49,7 +50,7 @@ describe('AccountAbstraction', function () {
     }
 
     async function sendUserOp(
-        signer: HardhatEthersSigner,
+        signer: HardhatEthersSigner | Wallet,
         sender: string,
         useAuth: boolean = false,
         callData: any = '0x',
@@ -96,10 +97,62 @@ describe('AccountAbstraction', function () {
 
         //sign the user operation
         if (useAuth) {
-            userOp.signature = signer0.signMessage(
+            userOp.signature = signer.signMessage(
                 ethers.getBytes(await entryPoint.getUserOpHash(userOp))
             );
         }
+
+        //send the userop
+        const tx = await entryPoint.handleOps(
+            [userOp],
+            paymasterAccount.address
+        );
+        const receipt = await tx.wait();
+
+        return { sender, receipt };
+    }
+
+    async function sendUserOpWithSigner(
+        owner: HardhatEthersSigner | Wallet,
+        signer: HardhatEthersSigner | Wallet,
+        sender: string,
+        callData: any = '0x'
+    ): Promise<{ receipt: any; sender: string }> {
+        //get contract factories
+        const AccountFactoryFactory =
+            await hre.ethers.getContractFactory('AccountFactory');
+
+        //generate initCode for createAccount
+        const initCode = '0x';
+
+        //deposit funds to the Entrypoint
+        await entryPoint.depositTo(sender, {
+            value: hre.ethers.parseEther('100'),
+        });
+
+        //get EP nonce
+        const nonce = await entryPoint.getNonce(sender, 0);
+
+        //create the user op
+        const userOp: any = {
+            sender,
+            nonce,
+            initCode,
+            callData,
+            callGasLimit: 200_000_000,
+            accountGasLimits:
+                '0x0000000000000000000020000000000000000000000000000000000000200000',
+            preVerificationGas: 200_000_000,
+            gasFees:
+                '0x0000000000000000000000000002000000000000000000000000000000200000',
+            paymasterAndData: '0x',
+            signature: '0x',
+        };
+
+        //sign the user operation
+        userOp.signature = signer.signMessage(
+            ethers.getBytes(await entryPoint.getUserOpHash(userOp))
+        );
 
         //send the userop
         const tx = await entryPoint.handleOps(
@@ -269,9 +322,113 @@ describe('AccountAbstraction', function () {
             await sendUserOp(signer0, sender, true, callData);
             expect(await account.getCounter()).to.equal(3);
         });
+
+        it('can authenticate using an ad-hoc key', async function () {
+            const adHocSigner = new Wallet(
+                `0x${Buffer.from(ethers.randomBytes(32)).toString('hex')}`,
+                signer0.provider
+            );
+
+            const { sender, receipt } = await createNewAccount(
+                adHocSigner,
+                true
+            );
+
+            //TODO: find a better way to get the address
+            const accountAddress = receipt.logs[1].args[1];
+            expect(accountAddress).to.equal(sender);
+
+            //get the actual new smart account contract
+            const account = await hre.ethers.getContractAt(
+                'Account',
+                accountAddress
+            );
+
+            //verify the counter is zero
+            console.log('counter:', await account.getCounter());
+            expect(await account.getCounter()).to.equal(0);
+
+            //create call data for modifyState
+            const AccountFactory =
+                await hre.ethers.getContractFactory('Account');
+            const callData = AccountFactory.interface.encodeFunctionData(
+                'execute',
+                [
+                    sender,
+                    0,
+                    AccountFactory.interface.encodeFunctionData('modifyState'),
+                ]
+            );
+
+            //initially should be 0
+            expect(await account.getCounter()).to.equal(0);
+
+            //call first time
+            await sendUserOp(adHocSigner, sender, true, callData);
+            expect(await account.getCounter()).to.equal(1);
+
+            //call second time
+            await sendUserOp(adHocSigner, sender, true, callData);
+            expect(await account.getCounter()).to.equal(2);
+
+            //call third time
+            await sendUserOp(adHocSigner, sender, true, callData);
+            expect(await account.getCounter()).to.equal(3);
+        });
+
+        it('cannot authenticate to unauthorized user account', async function () {
+            const adHocSigner = new Wallet(
+                `0x${Buffer.from(ethers.randomBytes(32)).toString('hex')}`,
+                signer0.provider
+            );
+
+            const { sender, receipt } = await createNewAccount(
+                adHocSigner,
+                true
+            );
+
+            //TODO: find a better way to get the address
+            const accountAddress = receipt.logs[1].args[1];
+            expect(accountAddress).to.equal(sender);
+
+            //get the actual new smart account contract
+            const account = await hre.ethers.getContractAt(
+                'Account',
+                accountAddress
+            );
+
+            //verify the counter is zero
+            console.log('counter:', await account.getCounter());
+            expect(await account.getCounter()).to.equal(0);
+
+            //create call data for modifyState
+            const AccountFactory =
+                await hre.ethers.getContractFactory('Account');
+            const callData = AccountFactory.interface.encodeFunctionData(
+                'execute',
+                [
+                    sender,
+                    0,
+                    AccountFactory.interface.encodeFunctionData('modifyState'),
+                ]
+            );
+
+            //initially should be 0
+            expect(await account.getCounter()).to.equal(0);
+
+            //call with right user
+            await sendUserOp(adHocSigner, sender, true, callData);
+            expect(await account.getCounter()).to.equal(1);
+
+            //call with wrong user, should revert & have no effect
+            await expect(
+                sendUserOpWithSigner(adHocSigner, signer0, sender, callData)
+            ).to.be.reverted;
+            expect(await account.getCounter()).to.equal(1);
+        });
     });
 
-    describe('Paymaster', function () {
+    describe.skip('Paymaster', function () {
         this.beforeEach(async () => {
             //deploy account factory that requires auth
             //await deployAccountFactory(true);

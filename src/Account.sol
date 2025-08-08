@@ -40,11 +40,10 @@ contract Account is BaseAccount {
             address signer = ECDSA.recover(ethSignedMessageHash, userOp.signature);
 
             // 2. Validate signer is the owner
-            //require(signer == owner, "Invalid signer");
+            require(signer == owner, "Invalid signer");
 
             // 3. Validate nonce (simplified example)
-            //require(userOp.nonce == getNonce(), "Invalid nonce");
-
+            require(userOp.nonce == getNonce(), "Invalid nonce");
         }
 
         console.log("SIGNATURE VALID");
