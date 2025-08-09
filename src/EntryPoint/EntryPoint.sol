@@ -15,7 +15,6 @@ import "./Helpers.sol";
 import "./SenderCreator.sol";
 import "./Eip7702Support.sol";
 import "./utils/Exec.sol";
-import "hardhat/console.sol";
 
 //import "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
@@ -652,6 +651,7 @@ contract EntryPoint is IEntryPoint, StakeManager, NonceManager, ERC165, EIP712 {
         uint256 contextOffset;
         uint256 maxContextLength;
         uint256 len;
+
         assembly ("memory-safe") {
             success := call(paymasterVerificationGasLimit, paymaster, 0, add(validatePaymasterCall, 0x20), mload(validatePaymasterCall), 0, 0)
             len := returndatasize()
@@ -674,12 +674,6 @@ contract EntryPoint is IEntryPoint, StakeManager, NonceManager, ERC165, EIP712 {
         }
 
         unchecked {
-            if (success) {
-                console.log('PAYMASTER SUCCESS');
-            }
-            else {
-                console.log('PAYMASTER NO SUCCESS');
-            }
             if (!success || contextOffset != 64 || contextLength + 31 < maxContextLength) {
                 revert FailedOpWithRevert(opIndex, "AA33 reverted", Exec.getReturnData(REVERT_REASON_MAX_LEN));
             }

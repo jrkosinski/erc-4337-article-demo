@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 import "./EntryPoint/BaseAccount.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import "hardhat/console.sol";
 
 
 contract Account is BaseAccount {
@@ -46,13 +45,11 @@ contract Account is BaseAccount {
             require(userOp.nonce == getNonce(), "Invalid nonce");
         }
 
-        console.log("SIGNATURE VALID");
         // Return validation data (e.g., VALIDATION_SUCCESS)
         return 0; // Or a specific value indicating success
     }
 
     function modifyState() external {
-        console.log("ACCOUNT: modifyState CALLED");
         counter = counter+1;
     }
 

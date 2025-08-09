@@ -90,9 +90,19 @@ describe('AccountAbstraction', function () {
             gasFees:
                 '0x0000000000000000000000000002000000000000000000000000000000200000',
             paymasterAndData: paymaster
-                ? `${paymaster.target.padEnd(254, '0')}`
+                ? `${paymaster.target}0000000000000000000000000002000000000000000000000000000000020000`.padEnd(
+                      254,
+                      '0'
+                  )
                 : '0x',
             signature: '0x',
+
+            /*
+
+    uint256 public constant PAYMASTER_VALIDATION_GAS_OFFSET = 20;
+    uint256 public constant PAYMASTER_POSTOP_GAS_OFFSET = 36;
+    uint256 public constant PAYMASTER_DATA_OFFSET = 52;
+            */
         };
 
         //sign the user operation
@@ -204,7 +214,7 @@ describe('AccountAbstraction', function () {
         paymaster = await PaymasterFactory.deploy(entryPoint.target);
 
         //fund paymaster
-        await fundGas(signer1, paymaster.target, '210');
+        await fundGas(signer1, paymaster.target, '21');
         await paymaster.connect(signer1).deposit({
             value: hre.ethers.parseEther('100'),
         });
@@ -428,7 +438,7 @@ describe('AccountAbstraction', function () {
         });
     });
 
-    describe.skip('Paymaster', function () {
+    describe('Paymaster', function () {
         this.beforeEach(async () => {
             //deploy account factory that requires auth
             //await deployAccountFactory(true);
